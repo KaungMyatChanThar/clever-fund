@@ -1,5 +1,7 @@
-import { type ReactNode } from 'react'
+import { useState, type ReactNode, type FormEvent } from 'react'
 import './App.css'
+
+const API_BASE = '/api/v1'
 
 const steps = [
   {
@@ -63,7 +65,16 @@ const missionPoints = [
   { icon: '🌱', title: 'Reinvested in Myanmar', body: '20% of all repayments fund the next generation of Clever Fund scholars.' },
 ]
 
-// Shared section layout wrapper
+interface Course {
+  id: number
+  title: string
+  description: string
+  program: string
+  provider: string
+  duration: string
+  price_mmk: number
+}
+
 function Section({ id, className, children }: { id?: string; className?: string; children: ReactNode }) {
   return (
     <section id={id} className={`w-full py-24 px-6 ${className ?? ''}`}>
@@ -83,6 +94,201 @@ function SectionHeading({ label, title, subtitle }: { label: string; title: stri
       <h2 className="text-4xl md:text-5xl font-black text-gray-900 leading-tight">{title}</h2>
       {subtitle && <p className="text-gray-500 mt-4 text-base max-w-xl mx-auto">{subtitle}</p>}
     </div>
+  )
+}
+
+function MatchedCourses({ courses, program }: { courses: Course[]; program: string }) {
+  const programIcon = programs.find(p => p.name === program)?.icon ?? '📚'
+  return (
+    <div className="mt-8 text-left">
+      <div className="flex items-center gap-2 mb-5">
+        <span className="text-2xl">{programIcon}</span>
+        <div>
+          <p className="font-black text-gray-900 text-lg leading-tight">Courses matched for you</p>
+          <p className="text-amber-700 text-xs font-semibold">{program}</p>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {courses.map(course => (
+          <div key={course.id} className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-gray-900 text-sm">{course.title}</p>
+                <p className="text-gray-500 text-xs mt-1 leading-relaxed">{course.description}</p>
+                <div className="flex flex-wrap gap-3 mt-3">
+                  <span className="text-xs text-amber-700 font-semibold">{course.provider}</span>
+                  <span className="text-xs text-gray-400">{course.duration}</span>
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-xs text-gray-400 line-through">
+                  {course.price_mmk.toLocaleString()} MMK
+                </p>
+                <p className="text-xs font-black text-amber-600 mt-0.5">0 upfront</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ApplyForm() {
+  const [fullName, setFullName] = useState('')
+  const [contact, setContact] = useState('')
+  const [program, setProgram] = useState('')
+  const [motivation, setMotivation] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [matchedCourses, setMatchedCourses] = useState<Course[] | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
+
+    try {
+      const res = await fetch(`${API_BASE}/applications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ full_name: fullName, contact, program, motivation }),
+        signal: controller.signal,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error ?? 'Something went wrong. Please try again.')
+        return
+      }
+
+      setMatchedCourses(data.matched_courses ?? [])
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setError('Request timed out.')
+      } else {
+        setError('Could not reach the server.')
+      }
+    } finally {
+      clearTimeout(timeout)
+      setLoading(false)
+    }
+  }
+
+  if (matchedCourses !== null) {
+    return (
+      <div className="bg-white rounded-3xl p-8 shadow-2xl text-left">
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center text-2xl mb-3">
+            ✅
+          </div>
+          <h3 className="font-black text-gray-900 text-xl">Application received!</h3>
+          <p className="text-gray-500 text-sm mt-1">
+            We'll reach out to <span className="font-semibold text-gray-700">{contact}</span> within 3 business days.
+          </p>
+        </div>
+
+        {matchedCourses.length > 0 ? (
+          <MatchedCourses courses={matchedCourses} program={program} />
+        ) : (
+          <p className="text-center text-gray-400 text-sm mt-4">
+            No courses found for this program yet — we review every case individually.
+          </p>
+        )}
+
+        <button
+          onClick={() => {
+            setMatchedCourses(null)
+            setFullName('')
+            setContact('')
+            setProgram('')
+            setMotivation('')
+          }}
+          className="mt-6 w-full border border-gray-200 text-gray-500 hover:text-gray-700 font-semibold py-3 rounded-xl text-sm transition-colors"
+        >
+          Submit another application
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white rounded-3xl p-8 shadow-2xl text-left space-y-5">
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Full Name</label>
+          <input
+            type="text"
+            placeholder="Ma Aye Aye"
+            value={fullName}
+            onChange={e => setFullName(e.target.value)}
+            required
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Phone / Email</label>
+          <input
+            type="text"
+            placeholder="09 xxx xxx xxx"
+            value={contact}
+            onChange={e => setContact(e.target.value)}
+            required
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Program of Interest</label>
+        <select
+          value={program}
+          onChange={e => setProgram(e.target.value)}
+          required
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent bg-white transition"
+        >
+          <option value="">Select a field…</option>
+          {programs.map((p) => (
+            <option key={p.name} value={p.name}>{p.icon} {p.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+          Why do you want to learn?{' '}
+          <span className="font-normal normal-case text-gray-400">(optional)</span>
+        </label>
+        <textarea
+          rows={3}
+          placeholder="Tell us about your goals and situation..."
+          value={motivation}
+          onChange={e => setMotivation(e.target.value)}
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent resize-none transition"
+        />
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl text-base transition-colors shadow-md"
+      >
+        {loading ? 'Submitting…' : 'Submit Application →'}
+      </button>
+      <p className="text-center text-xs text-gray-400">
+        No spam. We'll reach out within 3 business days.
+      </p>
+    </form>
   )
 }
 
@@ -113,7 +319,6 @@ export default function App() {
         className="relative w-full overflow-hidden"
         style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1c2537 55%, #2d1a08 100%)' }}
       >
-        {/* decorative glow */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -308,58 +513,7 @@ export default function App() {
             Your application takes under 10 minutes.
           </p>
 
-          <form className="bg-white rounded-3xl p-8 shadow-2xl text-left space-y-5">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Full Name</label>
-                <input
-                  type="text"
-                  placeholder="Ma Aye Aye"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Phone / Email</label>
-                <input
-                  type="text"
-                  placeholder="09 xxx xxx xxx"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Program of Interest</label>
-              <select className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent bg-white transition">
-                <option value="">Select a field…</option>
-                {programs.map((p) => (
-                  <option key={p.name} value={p.name}>{p.icon} {p.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
-                Why do you want to learn?{' '}
-                <span className="font-normal normal-case text-gray-400">(optional)</span>
-              </label>
-              <textarea
-                rows={3}
-                placeholder="Tell us about your goals and situation..."
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent resize-none transition"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 rounded-xl text-base transition-colors shadow-md"
-            >
-              Submit Application →
-            </button>
-            <p className="text-center text-xs text-gray-400">
-              No spam. We'll reach out within 3 business days.
-            </p>
-          </form>
+          <ApplyForm />
         </div>
       </section>
 

@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cleverfund
+      POSTGRES_PASSWORD: cleverfund
+      POSTGRES_DB: cleverfund
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cleverfund"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://cleverfund:cleverfund@db:5432/cleverfund?sslmode=disable
+      PORT: "8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
